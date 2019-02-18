@@ -23,7 +23,7 @@ def train(rank, params, shared_model, optimizer):
     done = True
     episode_length = 0
     while True:
-        episode_length =+ 1
+        episode_length += 1
         model.load_state_dict(shared_model.state_dict())
         if done:
             cx = Variable(torch.zeros(1, 256))
@@ -36,16 +36,16 @@ def train(rank, params, shared_model, optimizer):
         rewards = []
         entropies = []
         for step in range(params.num_steps):
-            value, action_values, (hx, cx) =model((Variable(state.unsqueeze(0)), (hx, cx)))
+            value, action_values, (hx, cx) = model((Variable(state.unsqueeze(0)), (hx, cx)))
             prob = F.softmax(action_values)
             log_prob = F.log_softmax(action_values)
-            entropy(log_prob * prob).sum(1)
+            entropy = -(log_prob * prob).sum(1)
             entropies.append(entropy)
             action = prob.multinomial().data
             log_prob = log_prob.gather(1, Variable(action))
-            values.append(values)
+            values.append(value)
             log_probs.append(log_prob)
-            env.step(action.numpy())
+            state, reward, done, _ = env.step(action.numpy())
             done = (done or episode_length >= params.max_episode_length)
             reward = max(min(reward, 1), -1)
             if done:
@@ -57,18 +57,18 @@ def train(rank, params, shared_model, optimizer):
                 break
         R = torch.zeros(1, 1)
         if not done:
-            value, _, _ = model.((Variable(state.unsqueeze(0)), (hx, cx)))
+            value, _, _ = model((Variable(state.unsqueeze(0)), (hx, cx)))
             R = value.data
-        values.append(variable(R))
+        values.append(Variable(R))
         policy_loss = 0
         value_loss = 0
         R = Variable(R)
-        gae = torch.zeroes(1, 1)
+        gae = torch.zeros(1, 1)
         for i in reversed(range(len(rewards))):
             R = params.gamma * R + rewards[i]
             advantage = R - values[i]
             value_loss = value_loss + 0.5 * advantage.pow(2)
-            TD = rewards[i] + params.gamma * values[i+1].data - values[i].data
+            TD = rewards[i] + params.gamma * values[i + 1].data - values[i].data
             gae = gae * params.gamma * params.tau + TD
             policy_loss = policy_loss - log_probs[i] * Variable(gae) - 0.01 * entropies[i]
         optimizer.zero_grad()
@@ -77,9 +77,3 @@ def train(rank, params, shared_model, optimizer):
         ensure_shared_grads(model, shared_model)
         optimizer.step()
             
-
- # converting the numpy array into a torch tensor
-
-
- # we keep the old hidden states, making sure they are in a torch variable
-
