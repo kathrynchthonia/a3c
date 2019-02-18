@@ -55,15 +55,28 @@ def train(rank, params, shared_model, optimizer):
             rewards.append(reward)
             if done:
                 break
-            R = torch.zeros(1, 1)
-            if not done:
-                value, _, _ = model.((Variable(state.unsqueeze(0)), (hx, cx)))
-                R = value.data
-            values.append(variable(R))
-            policy_loss = 0
-            value_loss = 0
-            R = Variable(R)
-            gae = torch.zeroes(1, 1)
+        R = torch.zeros(1, 1)
+        if not done:
+            value, _, _ = model.((Variable(state.unsqueeze(0)), (hx, cx)))
+            R = value.data
+        values.append(variable(R))
+        policy_loss = 0
+        value_loss = 0
+        R = Variable(R)
+        gae = torch.zeroes(1, 1)
+        for i in reversed(range(len(rewards))):
+            R = params.gamma * R + rewards[i]
+            advantage = R - values[i]
+            value_loss = value_loss + 0.5 * advantage.pow(2)
+            TD = rewards[i] + params.gamma * values[i+1].data - values[i].data
+            gae = gae * params.gamma * params.tau + TD
+            policy_loss = policy_loss - log_probs[i] * Variable(gae) - 0.01 * entropies[i]
+        optimizer.zero_grad()
+        (policy_loss + 0.5 * value_loss).backward()
+        torch.nn.utils.clip_grad_norm(model.parameters(), 40)
+        ensure_shared_grads(model, shared_model)
+        optimizer.step()
+            
 
  # converting the numpy array into a torch tensor
 
